@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -55,7 +56,7 @@ type UserInfo struct {
 
 func exchangeOIDCToken(
 	ctx context.Context, token OpenIDTokenType, skipVerifyTLS bool,
-) (*fclient.UserInfo, error) {
+) (*UserInfo, error) {
 	if token.AccessToken == "" || token.MatrixServerName == "" {
 		return nil, errors.New("Missing parameters in OIDC token")
 	}
@@ -109,9 +110,10 @@ func exchangeOIDCToken(
 		return nil, errors.New("Failed to look up user info")
 	}
 
-	userParts := strings.SplitN(u.Sub, ":", 2)
+	matrixServer := spec.ServerName(token.MatrixServerName)
+	userParts := strings.SplitN(userinfo.Sub, ":", 2)
 	if len(userParts) != 2 || userParts[1] != string(matrixServer) {
-		err = fmt.Errorf("userID doesn't match server name '%v' != '%v'", u.Sub, matrixServer)
+		err = fmt.Errorf("userID doesn't match server name '%v' != '%v'", userinfo.Sub, matrixServer)
 		log.Printf("Failed to look up user info: %v", err)
 		return nil, errors.New("Failed to look up user info")
 	}
