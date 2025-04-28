@@ -22,10 +22,6 @@ import (
 	"time"
 
 	"github.com/livekit/protocol/auth"
-
-	"github.com/matrix-org/gomatrix"
-	// "github.com/matrix-org/gomatrixserverlib/fclient"
-	"github.com/matrix-org/gomatrixserverlib/spec"
 )
 
 type Handler struct {
@@ -54,6 +50,11 @@ type UserInfo struct {
 	Sub string `json:"sub"`
 }
 
+type MatrixError struct {
+	ErrCode MatrixErrorCode `json:"errcode"`
+	Err     string          `json:"error"`
+}
+
 func exchangeOIDCToken(
 	ctx context.Context, token OpenIDTokenType, skipVerifyTLS bool,
 ) (*UserInfo, error) {
@@ -66,7 +67,6 @@ func exchangeOIDCToken(
 		// Disable TLS verification on the default HTTP Transport for the well-known lookup
 		http.DefaultTransport.(*http.Transport).TLSClientConfig  = &tls.Config{ InsecureSkipVerify: true }
 	}
-	// client := fclient.NewClient(fclient.WithWellKnownSRVLookups(true), fclient.WithSkipVerify(skipVerifyTLS))
 
 	// validate the openid token by getting the user's ID
 	url := url.URL{
@@ -76,17 +76,10 @@ func exchangeOIDCToken(
 		RawQuery: url.Values{"access_token": []string{token.AccessToken}}.Encode(),
 	}
 
-	// req, err := http.NewRequest("GET", url.String(), nil)
-	// if err != nil {
-	//	log.Printf("Failed to look up user info: %v", err)
-	//	return nil, errors.New("Failed to look up user info")
-	// }
-
 	log.Printf("Sending raw http request to: %s", url.String())
 
 	// var response *http.Response
 	response, err := http.Get(url.String())
-	// response, err = client.DoHTTPRequest(ctx, req)
 	if response != nil {
 		defer response.Body.Close() // nolint: errcheck
 	}
@@ -113,21 +106,13 @@ func exchangeOIDCToken(
 		return nil, errors.New("Failed to look up user info")
 	}
 
-	matrixServer := spec.ServerName(token.MatrixServerName)
 	userParts := strings.SplitN(userinfo.Sub, ":", 2)
-	if len(userParts) != 2 || userParts[1] != string(matrixServer) {
-		err = fmt.Errorf("userID doesn't match server name '%v' != '%v'", userinfo.Sub, matrixServer)
+	if len(userParts) != 2 || userParts[1] != token.MatrixServerName {
+		err = fmt.Errorf("userID doesn't match server name '%v' != '%s'", userinfo.Sub, token.MatrixServerName)
 		log.Printf("Failed to look up user info: %v", err)
 		return nil, errors.New("Failed to look up user info")
 	}
 
-	// userinfo, err := client.LookupUserInfo(
-	// 	ctx, spec.ServerName(token.MatrixServerName), token.AccessToken,
-	// )
-	// if err != nil {
-	// 	log.Printf("Failed to look up user info: %v", err)
-	// 	return nil, errors.New("Failed to look up user info")
-	// }
 	return &userinfo, nil
 }
 
@@ -160,7 +145,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("Error decoding JSON: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
-			err = json.NewEncoder(w).Encode(gomatrix.RespError{
+			err = json.NewEncoder(w).Encode(MatrixError{
 				ErrCode: "M_NOT_JSON",
 				Err:     "Error decoding JSON",
 			})
@@ -173,7 +158,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		if sfu_access_request.Room == "" {
 			log.Printf("Request missing room")
 			w.WriteHeader(http.StatusBadRequest)
-			err = json.NewEncoder(w).Encode(gomatrix.RespError{
+			err = json.NewEncoder(w).Encode(MatrixError{
 				ErrCode: "M_BAD_JSON",
 				Err:     "Missing parameters",
 			})
@@ -188,7 +173,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		userInfo, err := exchangeOIDCToken(r.Context(), sfu_access_request.OpenIDToken, h.skipVerifyTLS)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			err = json.NewEncoder(w).Encode(gomatrix.RespError{
+			err = json.NewEncoder(w).Encode(MatrixError{
 				ErrCode: "M_LOOKUP_FAILED",
 				Err:     "Failed to look up user info from homeserver",
 			})
@@ -204,7 +189,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		token, err := getJoinToken(h.key, h.secret, sfu_access_request.Room, userInfo.Sub+":"+sfu_access_request.DeviceID)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			err = json.NewEncoder(w).Encode(gomatrix.RespError{
+			err = json.NewEncoder(w).Encode(MatrixError{
 				ErrCode: "M_UNKNOWN",
 				Err:     "Internal Server Error",
 			})
