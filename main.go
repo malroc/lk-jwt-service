@@ -66,7 +66,7 @@ func exchangeOIDCToken(
 		// Disable TLS verification on the default HTTP Transport for the well-known lookup
 		http.DefaultTransport.(*http.Transport).TLSClientConfig  = &tls.Config{ InsecureSkipVerify: true }
 	}
-	client := fclient.NewClient(fclient.WithWellKnownSRVLookups(true), fclient.WithSkipVerify(skipVerifyTLS))
+	// client := fclient.NewClient(fclient.WithWellKnownSRVLookups(true), fclient.WithSkipVerify(skipVerifyTLS))
 
 	// validate the openid token by getting the user's ID
 	url := url.URL{
@@ -76,6 +76,8 @@ func exchangeOIDCToken(
 		RawQuery: url.Values{"access_token": []string{token.AccessToken}}.Encode(),
 	}
 
+	log.Printf("Sending request to: %s", url.String())
+
 	req, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		log.Printf("Failed to look up user info: %v", err)
@@ -83,7 +85,8 @@ func exchangeOIDCToken(
 	}
 
 	var response *http.Response
-	response, err = client.DoHTTPRequest(ctx, req)
+	response, err := http.Get(url.String())
+	// response, err = client.DoHTTPRequest(ctx, req)
 	if response != nil {
 		defer response.Body.Close() // nolint: errcheck
 	}
