@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -48,6 +49,10 @@ type SFUResponse struct {
 	JWT string `json:"jwt"`
 }
 
+type UserInfo struct {
+	Sub string `json:"sub"`
+}
+
 func exchangeOIDCToken(
 	ctx context.Context, token OpenIDTokenType, skipVerifyTLS bool,
 ) (*fclient.UserInfo, error) {
@@ -63,13 +68,61 @@ func exchangeOIDCToken(
 	client := fclient.NewClient(fclient.WithWellKnownSRVLookups(true), fclient.WithSkipVerify(skipVerifyTLS))
 
 	// validate the openid token by getting the user's ID
-	userinfo, err := client.LookupUserInfo(
-		ctx, spec.ServerName(token.MatrixServerName), token.AccessToken,
-	)
+	url := url.URL{
+		Scheme:   "https",
+		Host:     string(token.MatrixServerName),
+		Path:     "/_matrix/federation/v1/openid/userinfo",
+		RawQuery: url.Values{"access_token": []string{token.AccessToken}}.Encode(),
+	}
+
+	req, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		log.Printf("Failed to look up user info: %v", err)
 		return nil, errors.New("Failed to look up user info")
 	}
+
+	var response *http.Response
+	response, err = client.DoHTTPRequest(ctx, req)
+	if response != nil {
+		defer response.Body.Close() // nolint: errcheck
+	}
+	if err != nil {
+		log.Printf("Failed to look up user info: %v", err)
+		return nil, errors.New("Failed to look up user info")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		var errorOutput []byte
+		errorOutput, err = io.ReadAll(response.Body)
+		if err != nil {
+			log.Printf("Failed to look up user info: %v", err)
+			return nil, errors.New("Failed to look up user info")
+		}
+		err = fmt.Errorf("HTTP %d : %s", response.StatusCode, errorOutput)
+		log.Printf("Failed to look up user info: %v", err)
+		return nil, errors.New("Failed to look up user info")
+	}
+
+	var userinfo UserInfo
+	err = json.NewDecoder(response.Body).Decode(&userinfo)
+	if err != nil {
+		log.Printf("Failed to look up user info: %v", err)
+		return nil, errors.New("Failed to look up user info")
+	}
+
+	userParts := strings.SplitN(u.Sub, ":", 2)
+	if len(userParts) != 2 || userParts[1] != string(matrixServer) {
+		err = fmt.Errorf("userID doesn't match server name '%v' != '%v'", u.Sub, matrixServer)
+		log.Printf("Failed to look up user info: %v", err)
+		return nil, errors.New("Failed to look up user info")
+	}
+
+	// userinfo, err := client.LookupUserInfo(
+	// 	ctx, spec.ServerName(token.MatrixServerName), token.AccessToken,
+	// )
+	// if err != nil {
+	// 	log.Printf("Failed to look up user info: %v", err)
+	// 	return nil, errors.New("Failed to look up user info")
+	// }
 	return &userinfo, nil
 }
 
