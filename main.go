@@ -51,8 +51,8 @@ type UserInfo struct {
 }
 
 type MatrixError struct {
-	ErrCode MatrixErrorCode `json:"errcode"`
-	Err     string          `json:"error"`
+	ErrCode string `json:"errcode"`
+	Err     string `json:"error"`
 }
 
 func exchangeOIDCToken(
