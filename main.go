@@ -24,7 +24,7 @@ import (
 	"github.com/livekit/protocol/auth"
 
 	"github.com/matrix-org/gomatrix"
-	"github.com/matrix-org/gomatrixserverlib/fclient"
+	// "github.com/matrix-org/gomatrixserverlib/fclient"
 	"github.com/matrix-org/gomatrixserverlib/spec"
 )
 
@@ -76,15 +76,15 @@ func exchangeOIDCToken(
 		RawQuery: url.Values{"access_token": []string{token.AccessToken}}.Encode(),
 	}
 
-	log.Printf("Sending request to: %s", url.String())
+	// req, err := http.NewRequest("GET", url.String(), nil)
+	// if err != nil {
+	//	log.Printf("Failed to look up user info: %v", err)
+	//	return nil, errors.New("Failed to look up user info")
+	// }
 
-	req, err := http.NewRequest("GET", url.String(), nil)
-	if err != nil {
-		log.Printf("Failed to look up user info: %v", err)
-		return nil, errors.New("Failed to look up user info")
-	}
+	log.Printf("Sending raw http request to: %s", url.String())
 
-	var response *http.Response
+	// var response *http.Response
 	response, err := http.Get(url.String())
 	// response, err = client.DoHTTPRequest(ctx, req)
 	if response != nil {
